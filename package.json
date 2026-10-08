@@ -1,19 +1,19 @@
 {
-"name": "veltro",
-"version": "1.0.0",
-"private": true,
-"description": "Professional business management and POS system",
-"scripts": {
-"dev": "vite",
-"build": "vite",
-"preview": "vite preview"
-},
-"dependencies": {
-"react": "^18.3.1",
-"react-dom": "^18.3.1"
-},
-"devDependencies": {
-"@vitejs/plugin-react": "^4.3.1",
-"vite": "^5.4.8"
-}
+  "name": "veltro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Professional business management and POS system",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8"
+  }
 }
