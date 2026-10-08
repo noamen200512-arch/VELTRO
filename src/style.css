@@ -1,20 +1,173 @@
 * {
   box-sizing: border-box;
-  }
-
-body {
-margin: 0;
-font-family: Arial, sans-serif;
-background: #f5f6f8;
-color: #17191c;
 }
 
-button,
-input,
-select {
-font: inherit;
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f7fa;
+  color: #17191c;
+}
+
+button {
+  font: inherit;
 }
 
 #root {
-min-height: 100vh;
+  min-height: 100vh;
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 250px;
+  background: #111318;
+  color: #fff;
+  padding: 28px 16px;
+}
+
+.logo {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 0 14px 35px;
+}
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nav-item {
+  padding: 13px 14px;
+  border-radius: 10px;
+  color: #aeb3bd;
+  cursor: pointer;
+}
+
+.nav-item:hover,
+.nav-item.active {
+  background: #242832;
+  color: #fff;
+}
+
+.main {
+  flex: 1;
+  padding: 32px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.topbar h1 {
+  margin: 0 0 6px;
+  font-size: 30px;
+}
+
+.topbar p {
+  margin: 0;
+  color: #777e89;
+}
+
+.profile {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: #111318;
+  color: #fff;
+  font-weight: 700;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e7e9ed;
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.card span {
+  display: block;
+  color: #777e89;
+  font-size: 14px;
+  margin-bottom: 15px;
+}
+
+.card strong {
+  font-size: 26px;
+}
+
+.welcome {
+  margin-top: 24px;
+  background: #111318;
+  color: #fff;
+  border-radius: 18px;
+  padding: 35px;
+}
+
+.welcome h2 {
+  margin-top: 0;
+  font-size: 25px;
+}
+
+.welcome p {
+  color: #b9bec7;
+  max-width: 650px;
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 210px;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 650px) {
+  .app {
+    display: block;
+  }
+
+  .sidebar {
+    width: 100%;
+    padding: 18px;
+  }
+
+  .logo {
+    padding-bottom: 18px;
+  }
+
+  nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .nav-item {
+    white-space: nowrap;
+  }
+
+  .main {
+    padding: 20px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
 }
