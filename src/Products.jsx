@@ -13,19 +13,17 @@ const UNITS = [
 ];
 
 const getBarcodes = (value) => {
-  if (Array.isArray(value)) {
-    return value.map((v) => String(v || "").trim()).filter(Boolean);
-  }
+  const values = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\n,;]+/)
+      : [];
 
-  if (typeof value === "string") {
-    return value
-      .split(/[\n,;]+/)
-      .map((v) => v.trim())
-      .filter(Boolean);
-  }
-
-  return [];
+  return values.map((v) => String(v || "").trim()).filter(Boolean);
 };
+
+const normalizeBarcode = (value) =>
+  String(value || "").trim().toUpperCase();
 
 const getMarkup = (sale, purchase) => {
   const cost = Number(purchase || 0);
@@ -83,14 +81,7 @@ const compressImage = (file) =>
           return;
         }
 
-        context.drawImage(
-          image,
-          0,
-          0,
-          canvas.width,
-          canvas.height
-        );
-
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/jpeg", 0.75));
       };
 
@@ -120,7 +111,7 @@ export default function Products({
   table,
 }) {
   const [showForm, setShowForm] = React.useState(false);
-  const [extraBarcodes, setExtraBarcodes] = React.useState("");
+  const [extraBarcodes, setExtraBarcodes] = React.useState([]);
   const [error, setError] = React.useState("");
   const [imageLoading, setImageLoading] = React.useState(false);
 
@@ -138,14 +129,91 @@ export default function Products({
     }
   };
 
+  const updateAliases = (nextAliases) => {
+    setExtraBarcodes(nextAliases);
+    update("barcodeAliases", getBarcodes(nextAliases));
+  };
+
   React.useEffect(() => {
-    setExtraBarcodes(
-      getBarcodes(form?.barcodeAliases).join("\n")
-    );
+    setExtraBarcodes(getBarcodes(form?.barcodeAliases));
   }, [editing, form?.id, showForm]);
+
+  const currentProductId = () => editing ?? form?.id;
+
+  const getUsedBarcodes = () => {
+    const used = new Set();
+    const currentId = currentProductId();
+
+    (Array.isArray(products) ? products : []).forEach((product) => {
+      if (String(product.id) === String(currentId)) return;
+
+      [
+        product.barcode,
+        ...getBarcodes(product.barcodeAliases),
+      ].forEach((barcode) => {
+        const normalized = normalizeBarcode(barcode);
+        if (normalized) used.add(normalized);
+      });
+    });
+
+    return used;
+  };
+
+  const generateUniqueBarcode = (excludedAliasIndex = null) => {
+    const used = getUsedBarcodes();
+
+    const localBarcodes = [
+      value("barcode"),
+      ...extraBarcodes.filter((_, index) => index !== excludedAliasIndex),
+    ];
+
+    localBarcodes.forEach((barcode) => {
+      const normalized = normalizeBarcode(barcode);
+      if (normalized) used.add(normalized);
+    });
+
+    let candidate = "";
+    let attempts = 0;
+
+    do {
+      const timePart = Date.now().toString(36).toUpperCase();
+      const randomPart = Math.random()
+        .toString(36)
+        .slice(2, 7)
+        .toUpperCase();
+
+      candidate = `VLT-${timePart}-${randomPart}`;
+      attempts += 1;
+    } while (used.has(normalizeBarcode(candidate)) && attempts < 100);
+
+    if (used.has(normalizeBarcode(candidate))) {
+      setError("تعذر توليد باركود فريد. حاول مرة أخرى.");
+      return "";
+    }
+
+    setError("");
+    return candidate;
+  };
+
+  const generateMainBarcode = () => {
+    const barcode = generateUniqueBarcode();
+
+    if (barcode) update("barcode", barcode);
+  };
+
+  const generateAliasBarcode = (index) => {
+    const barcode = generateUniqueBarcode(index);
+
+    if (!barcode) return;
+
+    const next = [...extraBarcodes];
+    next[index] = barcode;
+    updateAliases(next);
+  };
 
   const handleNew = () => {
     setError("");
+    setExtraBarcodes([]);
 
     if (typeof openNewProduct === "function") {
       openNewProduct();
@@ -171,10 +239,7 @@ export default function Products({
       setEditing?.(product.id);
     }
 
-    setExtraBarcodes(
-      getBarcodes(product.barcodeAliases).join("\n")
-    );
-
+    setExtraBarcodes(getBarcodes(product.barcodeAliases));
     setShowForm(true);
   };
 
@@ -210,36 +275,17 @@ export default function Products({
 
     const mainBarcode = String(value("barcode") || "").trim();
     const aliases = getBarcodes(extraBarcodes);
-    const allBarcodes = [
-      mainBarcode,
-      ...aliases,
-    ].filter(Boolean);
+    const allBarcodes = [mainBarcode, ...aliases].filter(Boolean);
+    const normalizedBarcodes = allBarcodes.map(normalizeBarcode);
 
-    if (new Set(allBarcodes).size !== allBarcodes.length) {
-      setError("يوجد باركود مكرر في هذا المنتج.");
+    if (new Set(normalizedBarcodes).size !== normalizedBarcodes.length) {
+      setError("يوجد باركود مكرر داخل هذا المنتج.");
       return;
     }
 
-    const currentId = editing ?? form?.id;
-
-    const otherProducts = products.filter(
-      (product) => String(product.id) !== String(currentId)
-    );
-
-    const usedBarcodes = new Set();
-
-    otherProducts.forEach((product) => {
-      [
-        product.barcode,
-        ...getBarcodes(product.barcodeAliases),
-      ]
-        .map((barcode) => String(barcode || "").trim())
-        .filter(Boolean)
-        .forEach((barcode) => usedBarcodes.add(barcode));
-    });
-
-    const conflict = allBarcodes.find(
-      (barcode) => usedBarcodes.has(barcode)
+    const usedBarcodes = getUsedBarcodes();
+    const conflict = allBarcodes.find((barcode) =>
+      usedBarcodes.has(normalizeBarcode(barcode))
     );
 
     if (conflict) {
@@ -278,9 +324,7 @@ export default function Products({
   return (
     <section className="products-page veltro-products">
       <style>{`
-        .veltro-products * {
-          box-sizing: border-box;
-        }
+        .veltro-products * { box-sizing: border-box; }
 
         .veltro-products .products-header {
           display: flex;
@@ -291,14 +335,8 @@ export default function Products({
           margin-bottom: 16px;
         }
 
-        .veltro-products .products-header h2 {
-          margin: 0 0 5px;
-        }
-
-        .veltro-products .products-header p {
-          margin: 0;
-          opacity: .7;
-        }
+        .veltro-products .products-header h2 { margin: 0 0 5px; }
+        .veltro-products .products-header p { margin: 0; opacity: .7; }
 
         .veltro-products .product-search {
           width: 100%;
@@ -306,9 +344,7 @@ export default function Products({
           margin-bottom: 16px;
         }
 
-        .veltro-products .product-search input {
-          width: 100%;
-        }
+        .veltro-products .product-search input { width: 100%; }
 
         .veltro-products .products-table-wrapper {
           width: 100%;
@@ -329,9 +365,7 @@ export default function Products({
           vertical-align: middle;
         }
 
-        .veltro-products td button {
-          margin: 2px 4px 2px 0;
-        }
+        .veltro-products td button { margin: 2px 4px 2px 0; }
 
         .veltro-products .product-modal-backdrop {
           position: fixed;
@@ -365,15 +399,8 @@ export default function Products({
           margin-bottom: 18px;
         }
 
-        .veltro-products .modal-header h3 {
-          margin: 0 0 5px;
-        }
-
-        .veltro-products .modal-header p {
-          margin: 0;
-          opacity: .7;
-          font-size: .9rem;
-        }
+        .veltro-products .modal-header h3 { margin: 0 0 5px; }
+        .veltro-products .modal-header p { margin: 0; opacity: .7; font-size: .9rem; }
 
         .veltro-products .close-modal {
           min-width: 38px;
@@ -389,9 +416,7 @@ export default function Products({
           border-radius: 12px;
         }
 
-        .veltro-products .product-section h4 {
-          margin: 0 0 13px;
-        }
+        .veltro-products .product-section h4 { margin: 0 0 13px; }
 
         .veltro-products .product-form-grid {
           display: grid;
@@ -426,15 +451,54 @@ export default function Products({
           resize: vertical;
         }
 
+        .veltro-products .barcode-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .veltro-products .barcode-row input {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .veltro-products .barcode-row button {
+          flex-shrink: 0;
+          white-space: nowrap;
+        }
+
+        .veltro-products .barcode-list {
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+        }
+
+        .veltro-products .barcode-item {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .veltro-products .barcode-item small {
+          opacity: .7;
+          font-size: .78rem;
+        }
+
+        .veltro-products .barcode-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
         .veltro-products .price-row {
           display: flex;
           align-items: center;
           gap: 8px;
         }
 
-        .veltro-products .price-row input {
-          flex: 1;
-        }
+        .veltro-products .price-row input { flex: 1; }
 
         .veltro-products .markup {
           min-width: 64px;
@@ -468,9 +532,7 @@ export default function Products({
           border-radius: 10px;
         }
 
-        .veltro-products .image-preview {
-          object-fit: contain;
-        }
+        .veltro-products .image-preview { object-fit: contain; }
 
         .veltro-products .image-placeholder {
           display: flex;
@@ -512,8 +574,14 @@ export default function Products({
             grid-template-columns: minmax(0, 1fr);
           }
 
-          .veltro-products .product-section {
-            padding: 12px;
+          .veltro-products .product-section { padding: 12px; }
+
+          .veltro-products .barcode-row {
+            flex-wrap: wrap;
+          }
+
+          .veltro-products .barcode-row input {
+            flex-basis: 100%;
           }
         }
       `}</style>
@@ -543,9 +611,7 @@ export default function Products({
         <div
           className="product-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeForm();
-            }
+            if (event.target === event.currentTarget) closeForm();
           }}
         >
           <form
@@ -598,9 +664,7 @@ export default function Products({
                   {tr("reference", "Reference")}
                   <input
                     value={value("reference")}
-                    onChange={(event) =>
-                      update("reference", event.target.value)
-                    }
+                    onChange={(event) => update("reference", event.target.value)}
                   />
                 </label>
 
@@ -608,42 +672,92 @@ export default function Products({
                   {tr("category", "Category")}
                   <input
                     value={value("category")}
-                    onChange={(event) =>
-                      update("category", event.target.value)
-                    }
-                  />
-                </label>
-
-                <label>
-                  {tr("barcode", "Main barcode")}
-                  <input
-                    value={value("barcode")}
-                    onChange={(event) =>
-                      update("barcode", event.target.value)
-                    }
+                    onChange={(event) => update("category", event.target.value)}
                   />
                 </label>
 
                 <label style={{ gridColumn: "1 / -1" }}>
-                  {tr("additionalBarcodes", "Additional barcodes")}
-                  <textarea
-                    value={extraBarcodes}
-                    placeholder="أدخل كل باركود في سطر منفصل"
-                    onChange={(event) => {
-                      setExtraBarcodes(event.target.value);
-                      update(
-                        "barcodeAliases",
-                        getBarcodes(event.target.value)
-                      );
-                    }}
-                  />
+                  {tr("barcode", "Main barcode")}
+                  <div className="barcode-row">
+                    <input
+                      value={value("barcode")}
+                      onChange={(event) => update("barcode", event.target.value)}
+                      placeholder="VLT-..."
+                    />
+                    <button type="button" onClick={generateMainBarcode}>
+                      توليد تلقائي
+                    </button>
+                  </div>
                   <span className="field-hint">
-                    {tr(
-                      "additionalBarcodesHint",
-                      "One barcode per line or separated by commas."
-                    )}
+                    باركود داخلي فريد خاص بنظام VELTRO.
                   </span>
                 </label>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <h4 style={{ marginBottom: 5 }}>
+                    الباركودات الإضافية
+                  </h4>
+
+                  <p className="field-hint" style={{ marginTop: 0 }}>
+                    أضف باركودًا آخر لنفس المنتج، مثل باركود العبوة والكرتون.
+                  </p>
+
+                  <div className="barcode-list">
+                    {extraBarcodes.map((barcode, index) => (
+                      <div className="barcode-item" key={index}>
+                        <small>الباركود الإضافي {index + 1}</small>
+
+                        <div className="barcode-row">
+                          <input
+                            value={barcode}
+                            onChange={(event) => {
+                              const next = [...extraBarcodes];
+                              next[index] = event.target.value;
+                              updateAliases(next);
+                            }}
+                            placeholder={`باركود إضافي ${index + 1}`}
+                            aria-label={`الباركود الإضافي ${index + 1}`}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => generateAliasBarcode(index)}
+                          >
+                            توليد
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = extraBarcodes.filter(
+                                (_, itemIndex) => itemIndex !== index
+                              );
+                              updateAliases(next);
+                            }}
+                            aria-label={`حذف الباركود الإضافي ${index + 1}`}
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {extraBarcodes.length === 0 && (
+                      <p className="field-hint">
+                        لا توجد باركودات إضافية لهذا المنتج.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="barcode-actions">
+                    <button
+                      type="button"
+                      onClick={() => updateAliases([...extraBarcodes, ""])}
+                    >
+                      + إضافة خانة باركود
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -738,9 +852,7 @@ export default function Products({
                     min="0"
                     step="any"
                     value={value("quantity")}
-                    onChange={(event) =>
-                      update("quantity", event.target.value)
-                    }
+                    onChange={(event) => update("quantity", event.target.value)}
                   />
                 </label>
 
@@ -765,9 +877,7 @@ export default function Products({
                     min="1"
                     step="1"
                     value={value("cartonQty") ?? 1}
-                    onChange={(event) =>
-                      update("cartonQty", event.target.value)
-                    }
+                    onChange={(event) => update("cartonQty", event.target.value)}
                   />
                   <span className="field-hint">
                     عدد القطع داخل الكرتون الواحد
@@ -781,9 +891,7 @@ export default function Products({
                     min="0"
                     step="any"
                     value={value("minStock")}
-                    onChange={(event) =>
-                      update("minStock", event.target.value)
-                    }
+                    onChange={(event) => update("minStock", event.target.value)}
                   />
                 </label>
 
@@ -792,9 +900,7 @@ export default function Products({
                   <input
                     type="date"
                     value={value("expiryDate")}
-                    onChange={(event) =>
-                      update("expiryDate", event.target.value)
-                    }
+                    onChange={(event) => update("expiryDate", event.target.value)}
                   />
                 </label>
               </div>
@@ -858,9 +964,7 @@ export default function Products({
               </button>
 
               <button type="submit" disabled={imageLoading}>
-                {imageLoading
-                  ? "جارٍ تجهيز الصورة..."
-                  : tr("save", "Save")}
+                {imageLoading ? "جارٍ تجهيز الصورة..." : tr("save", "Save")}
               </button>
             </div>
           </form>
@@ -907,7 +1011,14 @@ export default function Products({
                   </div>
                 </td>
 
-                <td>{product.barcode || "—"}</td>
+                <td>
+                  <div>{product.barcode || "—"}</div>
+                  {getBarcodes(product.barcodeAliases).length > 0 && (
+                    <small style={{ opacity: 0.7 }}>
+                      +{getBarcodes(product.barcodeAliases).length} باركود إضافي
+                    </small>
+                  )}
+                </td>
 
                 <td>
                   {product.quantity} {product.unit || ""}
@@ -926,10 +1037,7 @@ export default function Products({
                 </td>
 
                 <td>
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(product)}
-                  >
+                  <button type="button" onClick={() => handleEdit(product)}>
                     {tr("edit", "Edit")}
                   </button>
 
